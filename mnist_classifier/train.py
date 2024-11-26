@@ -34,7 +34,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr=2e-3)
 
 def noise_images(images, diffusion):
-    images = images.long()
+    images = (images > 0.5).long()
 
     t = diffusion._sample_t(len(images), images.device)
 
@@ -70,42 +70,49 @@ def train(epoch, diffusion):
     for i, (images, labels) in enumerate(data_train_loader):
         optimizer.zero_grad()
 
-        output = net(noise_images(images, diffusion))
+        noisy_images = noise_images(images, diffusion)
+        output = net(noisy_images)
 
         loss = criterion(output, labels)
 
         loss_list.append(loss.detach().cpu().item())
         batch_list.append(i+1)
 
-#         if i % 10 == 0:
-#             print('Train - Epoch %d, Batch: %d, Loss: %f' % (epoch, i, loss.detach().cpu().item()))
+        if i % 10 == 0:
+            print('Train - Epoch %d, Batch: %d, Loss: %f' % (epoch, i, loss.detach().cpu().item()))
 
         loss.backward()
         optimizer.step()
 
 
-def test():
+def test(diffusion):
     net.eval()
     with torch.no_grad():
         total_correct = 0
         avg_loss = 0.0
+        noisy_correct = 0
         for i, (images, labels) in enumerate(data_test_loader):
             output = net(images)
             avg_loss += criterion(output, labels).sum()
             pred = output.detach().max(1)[1]
             total_correct += pred.eq(labels.view_as(pred)).sum()
 
+            noisy_images = noise_images(images, diffusion)
+            output = net(noisy_images)
+            pred = output.detach().max(1)[1]
+            noisy_correct += pred.eq(labels.view_as(pred)).sum()
+
     avg_loss /= len(data_test)
     acc = float(total_correct) / len(data_test)
-    print('Test Avg. Loss: %f, Accuracy: %f' % (avg_loss.detach().cpu().item(), acc))
+    noisy_acc = float(noisy_correct) / len(data_test)
+    print('Test Avg. Loss: %f, Accuracy: %f, Noisy Accuracy: %f' % (avg_loss.detach().cpu().item(), acc, noisy_acc))
     return acc
 
 
 def train_and_test(epoch, diffusion):
     print('training...')
-    import pdb; pdb.set_trace()
     train(epoch, diffusion)
-    acc = test()
+    acc = test(diffusion)
     return acc
 
 
